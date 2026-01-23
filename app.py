@@ -22,7 +22,7 @@ def inicializar_banco():
     # Cadastra um funcionário padrão se estiver vazio
     cursor.execute("SELECT COUNT(*) FROM funcionarios")
     if cursor.fetchone()[0] == 0:
-        cursor.execute("INSERT INTO funcionarios (nome) VALUES ('Gerente Exemplo')")
+        cursor.execute("INSERT INTO funcionarios (nome) VALUES ('Usuario Exemplo')")
     conn.commit()
     conn.close()
 
@@ -90,4 +90,5 @@ with st.sidebar:
             conn.close()
             df.to_excel("ponto.xlsx", index=False)
             with open("ponto.xlsx", "rb") as f:
+
                 st.download_button("Baixar Arquivo Excel", f, file_name="ponto_2026.xlsx")
