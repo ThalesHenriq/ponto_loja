@@ -2,6 +2,7 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 from datetime import datetime
+import pytz
 
 # 1. CONFIGURAÇÃO DA PÁGINA
 st.set_page_config(page_title="Ponto Digital 2026", page_icon="⏰")
@@ -34,14 +35,21 @@ def registrar_ponto(nome, tipo):
     try:
         conn = abrir_conexao()
         cursor = conn.cursor()
-        agora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        
+        # --- FORÇAR HORÁRIO DE BRASÍLIA ---
+        fuso_br = pytz.timezone('America/Sao_Paulo')
+        agora_br = datetime.now(fuso_br)
+        data_hora_formatada = agora_br.strftime("%d/%m/%Y %H:%M:%S")
+        # ----------------------------------
+
         cursor.execute("INSERT INTO registros (funcionario, tipo, data_hora) VALUES (?, ?, ?)", 
-                       (nome, tipo, agora))
+                       (nome, tipo, data_hora_formatada))
         conn.commit()
         conn.close()
-        st.success(f"✅ {tipo} registrado para {nome} às {datetime.now().strftime('%H:%M')}!")
+        st.success(f"✅ {tipo} registrado para {nome} às {agora_br.strftime('%H:%M')}!")
     except Exception as e:
         st.error(f"Erro ao salvar no banco: {e}")
+
 
 # --- INICIALIZAÇÃO ---
 inicializar_banco()
