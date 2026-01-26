@@ -16,11 +16,21 @@ def abrir_conexao():
 def inicializar_banco():
     conn = abrir_conexao()
     cursor = conn.cursor()
+    
+    # 1. Cria as tabelas se não existirem
     cursor.execute('''CREATE TABLE IF NOT EXISTS funcionarios 
                       (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT UNIQUE)''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS registros 
                       (id INTEGER PRIMARY KEY AUTOINCREMENT, funcionario TEXT, tipo TEXT, 
-                       data_hora TEXT, data_iso TEXT, foto BLOB)''')
+                       data_hora TEXT, foto BLOB)''')
+    
+    # 2. RESOLUÇÃO DO ERRO: Adiciona a coluna data_iso se ela não existir
+    try:
+        cursor.execute("ALTER TABLE registros ADD COLUMN data_iso TEXT")
+    except sqlite3.OperationalError:
+        # Se cair aqui, é porque a coluna já existe, então não faz nada
+        pass
+        
     conn.commit()
     conn.close()
 
@@ -141,3 +151,4 @@ with st.sidebar:
                                    file_name=f"ponto_{datetime.now().strftime('%m_%Y')}.xlsx")
             else:
                 st.info("Sem registros para calcular.")
+
