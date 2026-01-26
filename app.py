@@ -99,62 +99,99 @@ if usuario:
 
 # 4. PAINEL DO GERENTE (SIDEBAR)
 with st.sidebar:
-    st.header("🔐 Administração")
-    senha = st.text_input("Senha do Gerente", type="password")
+    st.header("🔐 Painel Administrativo")
+    st.write("Acesso restrito ao gerente")
     
-    if senha == "1234": # Altere sua senha aqui
+    senha = st.text_input("Digite a Senha", type="password")
+    
+    if senha == "1234":  # Altere sua senha aqui
+        st.success("Acesso Liberado")
+        
+        # --- ABA 1: CADASTRO ---
         st.divider()
-        st.subheader("Novo Colaborador")
-        novo_nome = st.text_input("Nome Completo")
-        if st.button("Cadastrar"):
+        st.subheader("👤 Gestão de Equipe")
+        novo_nome = st.text_input("Nome do Novo Funcionário")
+        if st.button("Cadastrar Colaborador", use_container_width=True):
             if novo_nome:
-                conn = abrir_conexao()
                 try:
+                    conn = abrir_conexao()
                     conn.execute("INSERT INTO funcionarios (nome) VALUES (?)", (novo_nome,))
                     conn.commit()
-                    st.success("Cadastrado!")
+                    conn.close()
+                    st.success(f"{novo_nome} cadastrado!")
                     st.rerun()
-                except: st.error("Erro ou nome já existe.")
-                finally: conn.close()
+                except:
+                    st.error("Erro: Nome já existe ou banco travado.")
+            else:
+                st.warning("Insira um nome válido.")
 
+        # --- ABA 2: RELATÓRIOS ---
         st.divider()
-        st.subheader("📊 Espelho de Ponto")
-        if st.button("Gerar Relatório com Horas Extras"):
+        st.subheader("📊 Relatórios e Horas")
+        if st.button("Gerar Espelho de Ponto (Excel)", use_container_width=True):
             conn = abrir_conexao()
             df = pd.read_sql_query("SELECT funcionario, tipo, data_iso, data_hora FROM registros", conn)
             conn.close()
 
             if not df.empty:
-                # Organizar dados para cálculo
+                # Processamento de Horas
                 df['data_hora'] = pd.to_datetime(df['data_hora'], format='%d/%m/%Y %H:%M:%S')
                 espelho = df.pivot_table(index=['funcionario', 'data_iso'], 
                                          columns='tipo', 
                                          values='data_hora', 
                                          aggfunc='first').reset_index()
                 
-                # Garantir que colunas existam antes de calcular
-                cols_necessarias = ['Entrada', 'Saída Almoço', 'Volta Almoço', 'Saída Final']
-                for col in cols_necessarias:
+                # Criar colunas faltantes para evitar erro no cálculo
+                for col in ['Entrada', 'Saída Almoço', 'Volta Almoço', 'Saída Final']:
                     if col not in espelho: espelho[col] = pd.NaT
 
-                def calcular_horas(row):
+                def calcular_jornada(row):
                     try:
-                        t1 = (row['Saída Almoço'] - row['Entrada']).total_seconds() / 3600
-                        t2 = (row['Saída Final'] - row['Volta Almoço']).total_seconds() / 3600
-                        total = t1 + t2
-                        extra = max(0, total - 8.0) # Base 8h/dia
+                        # Cálculo: (Almoço - Entrada) + (Saída Final - Volta)
+                        manha = (row['Saída Almoço'] - row['Entrada']).total_seconds() / 3600
+                        tarde = (row['Saída Final'] - row['Volta Almoço']).total_seconds() / 3600
+                        total = manha + tarde
+                        extra = max(0, total - 8.0) # Base de 8h diárias
                         return pd.Series([round(total, 2), round(extra, 2)])
-                    except: return pd.Series([0.0, 0.0])
+                    except:
+                        return pd.Series([0.0, 0.0])
 
-                espelho[['Total Horas', 'Horas Extras']] = espelho.apply(calcular_horas, axis=1)
+                espelho[['Total Horas', 'Horas Extras']] = espelho.apply(calcular_jornada, axis=1)
                 
-                # Download
-                excel_file = io.BytesIO()
-                espelho.to_excel(excel_file, index=False)
-                st.download_button("⬇️ Baixar Espelho de Ponto (.xlsx)", 
-                                   data=excel_file.getvalue(), 
-                                   file_name=f"ponto_{datetime.now().strftime('%m_%Y')}.xlsx")
+                # Criar arquivo Excel em memória
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                    espelho.to_excel(writer, index=False, sheet_name='Relatorio')
+                
+                st.download_button(
+                    label="⬇️ Baixar Planilha 2026",
+                    data=output.getvalue(),
+                    file_name=f"ponto_geral_{datetime.now().strftime('%d_%m_%Y')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
             else:
-                st.info("Sem registros para calcular.")
+                st.info("Nenhum dado para exportar.")
 
+        # --- ABA 3: AUDITORIA VISUAL ---
+        st.divider()
+        st.subheader("📸 Auditoria por Foto")
+        if st.button("Verificar Últimas Batidas", use_container_width=True):
+            conn = abrir_conexao()
+            # Busca os últimos 5 registros com foto
+            registros_fotos = pd.read_sql_query(
+                "SELECT funcionario, tipo, data_hora, foto FROM registros ORDER BY id DESC LIMIT 5", conn
+            )
+            conn.close()
 
+            if not registros_fotos.empty:
+                for _, row in registros_fotos.iterrows():
+                    st.write(f"*{row['funcionario']}* ({row['tipo']})")
+                    st.caption(f"🕒 {row['data_hora']}")
+                    if row['foto']:
+                        st.image(row['foto'], width=180)
+                    st.divider()
+            else:
+                st.info("Nenhuma foto registrada.")
+
+    elif senha != "":
+        st.error("Senha Incorreta")
