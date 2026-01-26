@@ -3,82 +3,119 @@ import sqlite3
 import pandas as pd
 from datetime import datetime
 import pytz
-from PIL import Image
-import io
 
-st.set_page_config(page_title="Ponto Facial 2026", page_icon="📸")
+# 1. CONFIGURAÇÃO DA PÁGINA
+st.set_page_config(page_title="Ponto Digital 2026", page_icon="⏰")
+
+# 2. DEFINIÇÃO DAS FUNÇÕES (Devem vir antes de serem chamadas pelos botões)
 
 def abrir_conexao():
+    """Cria conexão com o banco de dados"""
     return sqlite3.connect('ponto_loja.db', check_same_thread=False)
 
-# Adicionamos uma coluna para salvar a imagem (em formato texto/base64 ou binário)
 def inicializar_banco():
+    """Cria as tabelas se elas não existirem"""
     conn = abrir_conexao()
     cursor = conn.cursor()
-    cursor.execute('''CREATE TABLE IF NOT EXISTS funcionarios (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT UNIQUE)''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS funcionarios 
+                      (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT UNIQUE)''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS registros 
-                      (id INTEGER PRIMARY KEY AUTOINCREMENT, funcionario TEXT, tipo TEXT, data_hora TEXT, foto BLOB)''')
+                      (id INTEGER PRIMARY KEY AUTOINCREMENT, funcionario TEXT, tipo TEXT, data_hora TEXT)''')
+    
+    # Adiciona um funcionário inicial se a tabela estiver vazia
+    cursor.execute("SELECT COUNT(*) FROM funcionarios")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("INSERT INTO funcionarios (nome) VALUES ('Gerente')")
+    
     conn.commit()
     conn.close()
 
-def registrar_com_foto(nome, tipo, foto_capturada):
-    if foto_capturada is None:
-        st.error("❌ Você precisa tirar uma foto para confirmar sua identidade!")
-        return
-
+def registrar_ponto(nome, tipo):
     try:
         conn = abrir_conexao()
         cursor = conn.cursor()
         
-        # Horário de Brasília
+        # --- FORÇAR HORÁRIO DE BRASÍLIA ---
         fuso_br = pytz.timezone('America/Sao_Paulo')
-        agora_br = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M:%S")
-        
-        # Converter foto para binário
-        img = Image.open(foto_capturada)
-        buf = io.BytesIO()
-        img.save(buf, format='JPEG')
-        foto_binaria = buf.getvalue()
+        agora_br = datetime.now(fuso_br)
+        data_hora_formatada = agora_br.strftime("%d/%m/%Y %H:%M:%S")
+        # ----------------------------------
 
-        cursor.execute("INSERT INTO registros (funcionario, tipo, data_hora, foto) VALUES (?, ?, ?, ?)", 
-                       (nome, tipo, agora_br, foto_binaria))
+        cursor.execute("INSERT INTO registros (funcionario, tipo, data_hora) VALUES (?, ?, ?)", 
+                       (nome, tipo, data_hora_formatada))
         conn.commit()
         conn.close()
-        st.success(f"✅ Ponto de {tipo} batido com foto!")
+        st.success(f"✅ {tipo} registrado para {nome} às {agora_br.strftime('%H:%M')}!")
     except Exception as e:
-        st.error(f"Erro: {e}")
-
+        st.error(f"Erro ao salvar no banco: {e}")
+        
+# --- INICIALIZAÇÃO ---
 inicializar_banco()
 
-st.title("📸 Ponto com Validação Visual")
+# 3. INTERFACE DO USUÁRIO (FRONT-END)
+st.title("⏰ Relógio de Ponto")
+st.write("Sistema de registro para funcionários")
+st.divider()
 
+# Busca lista de funcionários para o selectbox
 conn = abrir_conexao()
-lista_func = pd.read_sql_query("SELECT nome FROM funcionarios", conn)['nome'].tolist()
+df_func = pd.read_sql_query("SELECT nome FROM funcionarios", conn)
+lista_func = df_func['nome'].tolist()
 conn.close()
 
 usuario = st.selectbox("Selecione seu nome:", [""] + lista_func)
 
 if usuario:
-    # Ativa a câmera do celular/PC
-    foto = st.camera_input("Tire uma foto para confirmar")
+    st.subheader(f"Colaborador: {usuario}")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("🚀 ENTRADA", use_container_width=True):
+            registrar_ponto(usuario, "Entrada")
+        if st.button("☕ SAÍDA ALMOÇO", use_container_width=True):
+            registrar_ponto(usuario, "Saída Almoço")
+            
+    with col2:
+        if st.button("🍱 VOLTA ALMOÇO", use_container_width=True):
+            registrar_ponto(usuario, "Volta Almoço")
+        if st.button("🏠 SAÍDA FINAL", use_container_width=True):
+            registrar_ponto(usuario, "Saída Final")
 
-    if foto:
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("🚀 ENTRADA", use_container_width=True):
-                registrar_com_foto(usuario, "Entrada", foto)
-        with col2:
-            if st.button("🏠 SAÍDA", use_container_width=True):
-                registrar_com_foto(usuario, "Saída", foto)
-
-# Painel do Gerente para ver as fotos
+# 4. PAINEL DO GERENTE (LATERAL)
 with st.sidebar:
-    st.header("Área do Gerente")
-    if st.text_input("Senha", type="password") == "1234":
-        if st.button("Ver Últimas Fotos"):
+    st.header("⚙️ Administração")
+    senha = st.text_input("Senha de Acesso", type="password")
+    
+    if senha == "1234":  # Troque pela sua senha
+        st.divider()
+        st.subheader("Novos Funcionários")
+        novo_nome = st.text_input("Nome do Colaborador")
+        if st.button("Cadastrar Funcionário"):
+            if novo_nome:
+                try:
+                    conn = abrir_conexao()
+                    conn.execute("INSERT INTO funcionarios (nome) VALUES (?)", (novo_nome,))
+                    conn.commit()
+                    conn.close()
+                    st.success("Cadastrado! Recarregue a página.")
+                    st.rerun() # Atualiza a lista de nomes imediatamente
+                except:
+                    st.error("Erro: Nome já existe.")
+            else:
+                st.warning("Preencha o nome.")
+
+        st.divider()
+        st.subheader("Exportar Relatórios")
+        if st.button("Gerar Planilha Excel"):
             conn = abrir_conexao()
-            df = pd.read_sql_query("SELECT funcionario, tipo, data_hora, foto FROM registros ORDER BY id DESC LIMIT 5", conn)
-            for i, row in df.iterrows():
-                st.write(f"{row['data_hora']} - {row['funcionario']}")
-                st.image(row['foto'], width=150)
+            df_regs = pd.read_sql_query("SELECT funcionario, tipo, data_hora FROM registros ORDER BY id DESC", conn)
             conn.close()
+            
+            if not df_regs.empty:
+                excel_nome = "ponto_registros.xlsx"
+                df_regs.to_excel(excel_nome, index=False)
+                with open(excel_nome, "rb") as f:
+                    st.download_button("⬇️ Baixar Planilha", f, file_name=excel_nome)
+            else:
+                st.info("Nenhum ponto registrado ainda.")
