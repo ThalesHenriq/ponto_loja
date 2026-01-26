@@ -17,19 +17,24 @@ def inicializar_banco():
     conn = abrir_conexao()
     cursor = conn.cursor()
     
-    # 1. Cria as tabelas se não existirem
+    # 1. Cria as tabelas básicas se não existirem
     cursor.execute('''CREATE TABLE IF NOT EXISTS funcionarios 
                       (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT UNIQUE)''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS registros 
-                      (id INTEGER PRIMARY KEY AUTOINCREMENT, funcionario TEXT, tipo TEXT, 
-                       data_hora TEXT, foto BLOB)''')
+                      (id INTEGER PRIMARY KEY AUTOINCREMENT, funcionario TEXT, tipo TEXT, data_hora TEXT)''')
     
-    # 2. RESOLUÇÃO DO ERRO: Adiciona a coluna data_iso se ela não existir
-    try:
-        cursor.execute("ALTER TABLE registros ADD COLUMN data_iso TEXT")
-    except sqlite3.OperationalError:
-        # Se cair aqui, é porque a coluna já existe, então não faz nada
-        pass
+    # 2. MIGRAR COLUNAS FALTANTES (Evita erros de "no column named")
+    colunas_necessarias = [
+        ("data_iso", "TEXT"),
+        ("foto", "BLOB")
+    ]
+    
+    for nome_col, tipo_col in colunas_necessarias:
+        try:
+            cursor.execute(f"ALTER TABLE registros ADD COLUMN {nome_col} {tipo_col}")
+        except sqlite3.OperationalError:
+            # Se a coluna já existir, o SQLite lançará um erro e nós apenas ignoramos
+            pass
         
     conn.commit()
     conn.close()
@@ -151,4 +156,5 @@ with st.sidebar:
                                    file_name=f"ponto_{datetime.now().strftime('%m_%Y')}.xlsx")
             else:
                 st.info("Sem registros para calcular.")
+
 
