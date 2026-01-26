@@ -1,5 +1,5 @@
 # Sistema de Ponto Simples 2026
-Sistema para batida de ponto via navegador ou celular.
+Sistema para batida de ponto via navegador ou celular, com confirmaçao por foto.
 
 ### Como usar:
 1. Suba os arquivos para o GitHub.
