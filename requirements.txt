@@ -1,8 +1,9 @@
 streamlit
+sqlite3 
 pandas
-openpyxl
 pytz
-Pillow
+pillow
+requests
 geopy
 streamlit-js-eval
-requests
+fpdf  # Adicione essa linha para a geração de PDF
