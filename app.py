@@ -80,7 +80,10 @@ if usuario:
         else: st.warning("📡 Buscando GPS... Ative a localização e aguarde.")
 
     if autorizado:
-        foto = st.camera_input("Foto obrigatória para validar")
+        if 'foto_key' not in st.session_state:
+            st.session_state.foto_key = 0  # Inicializa chave para câmera
+
+        foto = st.camera_input("Foto obrigatória para validar", key=f"camera_{st.session_state.foto_key}")
         if foto:
             st.divider()
             c1, c2, c3, c4 = st.columns(4)
@@ -95,7 +98,9 @@ if usuario:
                 conn.commit()
                 conn.close()
                 st.success(f"{tipo_batida} OK!")
-                st.rerun()
+                # Em vez de rerun, atualiza estado para resetar câmera e botões
+                st.session_state.foto_key += 1  # Muda chave para recriar câmera
+                # Força atualização dos botões (Streamlit rerenderiza automaticamente)
 
             botoes = [("🚀 Entrada", "Entrada", c1), ("☕ Saída Almoço", "Saída Almoço", c2), 
                       ("🍱 Volta Almoço", "Volta Almoço", c3), ("🏠 Saída Final", "Saída Final", c4)]
