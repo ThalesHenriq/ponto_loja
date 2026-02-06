@@ -8,6 +8,7 @@ import io
 import requests
 from geopy.distance import geodesic
 from streamlit_js_eval import streamlit_js_eval
+from fpdf import FPDF  # Adicionado para geração de PDF
 
 # 1. CONFIGURAÇÃO DA MARCA ORBTECH
 st.set_page_config(page_title="OrbTech Ponto Pro", page_icon="🛡️", layout="wide")
@@ -144,10 +145,16 @@ with st.sidebar:
         # 3. RELATÓRIOS E CÁLCULOS
         with st.expander("📊 Relatórios"):
             filtro = st.selectbox("Filtrar Funcionário", ["Todos"] + lista_func)
+            data_inicio = st.date_input("Data Início", value=datetime.now(pytz.timezone('America/Sao_Paulo')) - pd.Timedelta(days=30))
+            data_fim = st.date_input("Data Fim", value=datetime.now(pytz.timezone('America/Sao_Paulo')))
+            
             conn = abrir_conexao()
-            q = "SELECT funcionario, tipo, data_iso, data_hora FROM registros"
-            if filtro != "Todos": q += f" WHERE funcionario = '{filtro}'"
-            df = pd.read_sql_query(q, conn)
+            q = "SELECT funcionario, tipo, data_iso, data_hora FROM registros WHERE data_iso BETWEEN ? AND ?"
+            params = (data_inicio.isoformat(), data_fim.isoformat())
+            if filtro != "Todos":
+                q += " AND funcionario = ?"
+                params += (filtro,)
+            df = pd.read_sql_query(q, conn, params=params)
             conn.close()
 
             if not df.empty:
@@ -169,12 +176,63 @@ with st.sidebar:
                         return "Incompleto"
 
                 esp['Total Dia'] = esp.apply(calc_horas, axis=1)
-                st.dataframe(esp[['funcionario', 'data_iso', 'Total Dia']], hide_index=True)
+                if filtro == "Todos":
+                    st.dataframe(esp, hide_index=True)
+                else:
+                    st.dataframe(esp[['data_iso', 'Entrada', 'Saída Almoço', 'Volta Almoço', 'Saída Final', 'Total Dia']], hide_index=True)
                 
                 output = io.BytesIO()
                 with pd.ExcelWriter(output, engine='openpyxl') as writer:
                     esp.to_excel(writer, index=False)
                 st.download_button("⬇️ Baixar Excel", output.getvalue(), "relatorio_orbtech.xlsx")
+
+                # Função para gerar Espelho de Ponto PDF conforme normas CLT/Portaria 671
+                def gerar_espelho_pdf(esp, nome_empresa, funcionario, data_inicio, data_fim):
+                    pdf = FPDF(orientation='L', unit='mm', format='A4')
+                    pdf.add_page()
+                    pdf.set_font("Arial", size=12)
+                    
+                    # Cabeçalho
+                    pdf.cell(200, 10, txt=f"Espelho de Ponto - {nome_empresa}", ln=1, align='C')
+                    pdf.cell(200, 10, txt=f"Funcionário: {funcionario}", ln=1, align='C')
+                    pdf.cell(200, 10, txt=f"Período: {data_inicio} a {data_fim}", ln=1, align='C')
+                    pdf.ln(10)
+                    
+                    # Tabela
+                    col_widths = [30, 40, 40, 40, 40, 40]  # Data, Entrada, Saída Almoço, Volta Almoço, Saída Final, Total
+                    headers = ["Data", "Entrada", "Saída Almoço", "Volta Almoço", "Saída Final", "Total Horas"]
+                    for i, header in enumerate(headers):
+                        pdf.cell(col_widths[i], 10, header, 1, 0, 'C')
+                    pdf.ln()
+                    
+                    for _, row in esp.iterrows():
+                        pdf.cell(col_widths[0], 10, str(row['data_iso']), 1, 0, 'C')
+                        pdf.cell(col_widths[1], 10, row['Entrada'].strftime('%H:%M:%S') if pd.notna(row['Entrada']) else '-', 1, 0, 'C')
+                        pdf.cell(col_widths[2], 10, row['Saída Almoço'].strftime('%H:%M:%S') if pd.notna(row['Saída Almoço']) else '-', 1, 0, 'C')
+                        pdf.cell(col_widths[3], 10, row['Volta Almoço'].strftime('%H:%M:%S') if pd.notna(row['Volta Almoço']) else '-', 1, 0, 'C')
+                        pdf.cell(col_widths[4], 10, row['Saída Final'].strftime('%H:%M:%S') if pd.notna(row['Saída Final']) else '-', 1, 0, 'C')
+                        pdf.cell(col_widths[5], 10, row['Total Dia'], 1, 0, 'C')
+                        pdf.ln()
+                    
+                    # Total Geral (simples soma de horas para exemplo)
+                    total_horas = esp['Total Dia'].apply(lambda x: 0 if x == "Incompleto" else int(x.split('h')[0]) + int(x.split(' ')[1].split('min')[0])/60).sum()
+                    h_total = int(total_horas)
+                    m_total = int((total_horas - h_total) * 60)
+                    pdf.ln(10)
+                    pdf.cell(200, 10, txt=f"Total Horas no Período: {h_total:02d}h {m_total:02d}min", ln=1, align='C')
+                    
+                    # Espaço para Assinatura
+                    pdf.ln(20)
+                    pdf.cell(200, 10, txt="_______________   ______", ln=1, align='C')
+                    pdf.cell(200, 10, txt="Assinatura do Funcionário                          Data", ln=1, align='C')
+                    
+                    output = io.BytesIO()
+                    pdf.output(output)
+                    return output.getvalue()
+
+                if filtro != "Todos":
+                    pdf_data = gerar_espelho_pdf(esp[['data_iso', 'Entrada', 'Saída Almoço', 'Volta Almoço', 'Saída Final', 'Total Dia']], conf['nome_empresa'], filtro, data_inicio.isoformat(), data_fim.isoformat())
+                    st.download_button("⬇️ Baixar Espelho de Ponto PDF", pdf_data, f"espelho_ponto_{filtro}.pdf", "application/pdf")
 
         # 4. AUDITORIA DE FOTOS
         with st.expander("📸 Últimas 10 Fotos"):
