@@ -18,7 +18,6 @@ def abrir_conexao():
 def inicializar_banco():
     conn = abrir_conexao()
     cursor = conn.cursor()
-    # Criar tabelas
     cursor.execute('''CREATE TABLE IF NOT EXISTS configuracoes 
                       (id INTEGER PRIMARY KEY, nome_empresa TEXT, lat REAL, lon REAL, 
                        raio_metros REAL, ip_loja TEXT, modo_trava TEXT)''')
@@ -27,12 +26,10 @@ def inicializar_banco():
                       (id INTEGER PRIMARY KEY AUTOINCREMENT, funcionario TEXT, tipo TEXT, 
                        data_hora TEXT, data_iso TEXT, foto BLOB)''')
     
-    # Garantir que existe a linha de configuração ID=1
     cursor.execute("SELECT COUNT(*) FROM configuracoes WHERE id=1")
     if cursor.fetchone()[0] == 0:
         cursor.execute("""INSERT INTO configuracoes (id, nome_empresa, lat, lon, raio_metros, ip_loja, modo_trava) 
                           VALUES (1, 'OrbTech Cliente', -23.5505, -46.6333, 50.0, '0.0.0.0', 'IP')""")
-    
     conn.commit()
     conn.close()
 
@@ -44,24 +41,21 @@ def verificar_batida_hoje(nome, tipo):
     conn = abrir_conexao()
     hoje = datetime.now(pytz.timezone('America/Sao_Paulo')).date().isoformat()
     query = "SELECT COUNT(*) FROM registros WHERE funcionario = ? AND tipo = ? AND data_iso = ?"
-    resultado = conn.execute(query, (nome, tipo, hoje)).fetchone()
+    resultado = conn.execute(query, (nome, tipo, hoje)).fetchone()[0]
     conn.close()
-    return resultado[0] > 0
+    return resultado > 0
 
-# --- INICIALIZAÇÃO CRÍTICA ---
+# --- INICIALIZAÇÃO ---
 inicializar_banco()
 conn = abrir_conexao()
-
-# Leitura segura das configurações
 df_conf = pd.read_sql_query("SELECT * FROM configuracoes WHERE id=1", conn)
-conf = df_conf.iloc[0] # Agora garantido que existe
+conf = df_conf.iloc[0] # Corrigido para acessar a primeira linha corretamente
 
-# Leitura de funcionários
 df_func = pd.read_sql_query("SELECT nome FROM funcionarios ORDER BY nome", conn)
 lista_func = df_func['nome'].tolist()
 conn.close()
 
-# --- INTERFACE DO FUNCIONÁRIO ---
+# --- INTERFACE ---
 st.title(f"🏢 {conf['nome_empresa']}")
 st.write(f"🔒 Segurança OrbTech: *Modo {conf['modo_trava']} Ativo*")
 
@@ -74,8 +68,9 @@ usuario = st.selectbox("Selecione seu nome:", [""] + lista_func)
 
 if usuario:
     autorizado = False
+    # CORREÇÃO DA LINHA DO ERRO: removido o '_' extra de 'ip_loja'
     if conf['modo_trava'] == 'IP':
-        autorizado = (ip_atual == conf['ip_lo_ja'] or conf['ip_loja'] == '0.0.0.0')
+        autorizado = (ip_atual == conf['ip_loja'] or conf['ip_loja'] == '0.0.0.0')
     elif conf['modo_trava'] == 'GPS' and loc:
         dist = geodesic((conf['lat'], conf['lon']), (loc['lat'], loc['lon'])).meters
         autorizado = (dist <= conf['raio_metros'])
@@ -97,13 +92,13 @@ if usuario:
                 st.success(f"{tipo_b} registrado!")
                 st.rerun()
 
-            botoes = [("🚀 Entrada", "Entrada", c1), ("☕ Almoço (Saída)", "Saída Almoço", c2), 
-                      ("🍱 Almoço (Volta)", "Volta Almoço", c3), ("🏠 Saída Final", "Saída Final", c4)]
+            botoes = [("🚀 Entrada", "Entrada", c1), ("☕ Almoço (S)", "Saída Almoço", c2), 
+                      ("🍱 Almoço (V)", "Volta Almoço", c3), ("🏠 Saída Final", "Saída Final", c4)]
             
             for label, t, col in botoes:
                 if not verificar_batida_hoje(usuario, t):
                     col.button(label, on_click=salvar_ponto, args=(t,), use_container_width=True)
-                else: col.info(f"Registrado")
+                else: col.info(f"OK")
     else:
         st.error("❌ Acesso bloqueado. Verifique sua rede ou localização.")
 
@@ -113,16 +108,14 @@ with st.sidebar:
     senha_admin = st.text_input("Senha", type="password")
     
     if senha_admin == "1234":
-        # Aba de Configurações
         with st.expander("🛠️ Configurações & Trava"):
             n_emp = st.text_input("Nome da Loja", value=conf['nome_empresa'])
             m_trava = st.radio("Modo Segurança", ["GPS", "IP"], index=0 if conf['modo_trava'] == 'GPS' else 1)
             n_lat = st.number_input("Lat", value=conf['lat'], format="%.6f")
             n_lon = st.number_input("Lon", value=conf['lon'], format="%.6f")
             n_raio = st.number_input("Raio (m)", value=float(conf['raio_metros']))
-            if st.button("Definir meu IP atual como da Loja"):
-                n_ip = ip_atual
-            else: n_ip = conf['ip_loja']
+            n_ip = st.text_input("IP da Loja", value=conf['ip_loja'])
+            if st.button("Usar meu IP atual"): n_ip = ip_atual
             
             if st.button("Salvar Tudo"):
                 conn = abrir_conexao()
@@ -130,30 +123,23 @@ with st.sidebar:
                              (n_emp, n_lat, n_lon, n_raio, n_ip, m_trava))
                 conn.commit(); conn.close(); st.rerun()
 
-        # Aba de Funcionários
         with st.expander("👤 Gerenciar Equipe"):
             n_f = st.text_input("Novo Nome")
             if st.button("Cadastrar"):
                 conn = abrir_conexao()
                 conn.execute("INSERT INTO funcionarios (nome) VALUES (?)", (n_f,))
                 conn.commit(); conn.close(); st.rerun()
-            
-            st.write("Lista atual:")
-            st.write(lista_func)
 
-        # Relatórios
         with st.expander("📊 Relatórios"):
             if st.button("Gerar Planilha"):
                 conn = abrir_conexao()
                 df_rel = pd.read_sql_query("SELECT funcionario, tipo, data_iso, data_hora FROM registros", conn)
                 conn.close()
                 if not df_rel.empty:
-                    st.dataframe(df_rel)
                     output = io.BytesIO()
                     df_rel.to_excel(output, index=False)
                     st.download_button("Download Excel", output.getvalue(), "relatorio.xlsx")
 
-        # Fotos
         with st.expander("📸 Últimas Fotos"):
             conn = abrir_conexao()
             fotos_df = pd.read_sql_query("SELECT funcionario, tipo, data_hora, foto FROM registros ORDER BY id DESC LIMIT 10", conn)
