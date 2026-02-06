@@ -4,6 +4,6 @@ openpyxl
 pytz
 Pillow
 geopy
-geodesic
 streamlit-js-eval
 requests
+
