@@ -57,7 +57,7 @@ conn.close()
 
 # --- INTERFACE DO FUNCIONÁRIO ---
 st.title(f"🏢 {conf['nome_empresa']}")
-st.write(f"🔒 Segurança Ativa: *Modo {conf['modo_trava']}*")
+st.write(f"🔒 Segurança Ativa: **Modo {conf['modo_trava']}**")
 
 ip_atual = get_ip_usuario()
 loc = None
@@ -223,7 +223,7 @@ with st.sidebar:
                     
                     # Espaço para Assinatura
                     pdf.ln(20)
-                    pdf.cell(200, 10, txt="_______________   ______", ln=1, align='C')
+                    pdf.cell(200, 10, txt="___________________________________________   ________________", ln=1, align='C')
                     pdf.cell(200, 10, txt="Assinatura do Funcionário                          Data", ln=1, align='C')
                     
                     output = io.BytesIO()
@@ -243,6 +243,6 @@ with st.sidebar:
                 col_a, col_b = st.columns([1, 2])
                 if r['foto']:
                     col_a.image(io.BytesIO(r['foto']), width=100)
-                col_b.write(f"*{r['funcionario']}* - {r['tipo']}")
+                col_b.write(f"**{r['funcionario']}** - {r['tipo']}")
                 col_b.caption(r['data_hora'])
                 st.divider()
