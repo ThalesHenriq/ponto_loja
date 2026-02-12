@@ -1,9 +1,0 @@
-streamlit
-sqlite3 
-pandas
-pytz
-pillow
-requests
-geopy
-streamlit-js-eval
-fpdf
