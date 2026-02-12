@@ -5,5 +5,5 @@ Pillow
 requests
 geopy
 streamlit-js-eval==0.1.7
-fpdf
+fpdf2
 openpyxl
